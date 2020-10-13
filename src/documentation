@@ -1,0 +1,28 @@
+The shop which manages the access for the items in the storage,
+each desired item has a lock associated to it so that at one given time
+only one customer can access it.
+The shop also has a "global" lock, which behaves as a readwrite lock,
+where it is used to lock down the whole shop to perform the inventory check,
+and no to interrupt the other customers, only to make them wait.
+
+Each item has its own mutex, so concurrent access to other items is allowed, while if a user wants the same
+product it has to wait
+
+The customer requests access to the shop, if it is not under verification stage by the verifier
+he invariant is that the other items are on modified by this thread and the shop readlock (shared mode) is released,
+nd the item lock is released. In case the customer obtains the item the quantity of th eproduct is decreased
+I use the readlock (shared mode) in order to make the acces for the shoppers and deny the storage verification to verify the sot
+while someone is shopping
+
+The customer adds a bill to the shop
+Only one customer can add a bill at a given time
+and locks this method from other customers
+Only on bill is added, and after the operation the bill is part of the list of bills and the money is increased
+by the amount that is on the bill
+@param billToAdd the bill to add
+
+Lock the shop in exclusive mode to verify it
+
+Unlock the shop in exclusive mode to verify it
+
+The items are added at the initial phase of the applciation
