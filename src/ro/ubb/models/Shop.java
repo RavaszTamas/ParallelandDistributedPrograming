@@ -3,22 +3,18 @@ package ro.ubb.models;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-import java.util.concurrent.locks.ReadWriteLock;
+import java.util.Map;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
-import java.util.stream.Collectors;
 
 /**
  * The shop which manages the access for the items in the storage,
  * each desired item has a lock associated to it so that at one given time
  * only one customer can access it.
- * The shop also has a "global" lock, which behaves as a readwrite lock,
- * where it is used to lock down the whole shop to perform the inventory check,
- * and no to interrupt the other customers, only to make them wait.
  */
 public class Shop {
 
     private final HashMap<Product, Integer> products;
+    private final HashMap<Product, Integer> prodcutsRecorded;
     private final HashMap<Product, Integer> initialProductList;
     /**
      * Each item has its own mutex, so concurrent access to other items is allowed, while if a user wants the same
@@ -26,15 +22,18 @@ public class Shop {
      */
     private final HashMap<Product, ReentrantLock> locksForProducts;
 
-    private final ReadWriteLock shopLock = new ReentrantReadWriteLock();
-
+    private final ReentrantLock billLock = new ReentrantLock();
     double totalIncome = 0;
     List<Bill> productsBought = new ArrayList<>();
-
     public Shop() {
         products = new HashMap<>();
         initialProductList = new HashMap<>();
         locksForProducts = new HashMap<>();
+        prodcutsRecorded = new HashMap<>();
+    }
+
+    public ReentrantLock getBillLock() {
+        return billLock;
     }
 
     public List<Bill> getProductsBought() {
@@ -53,33 +52,34 @@ public class Shop {
      * The customer adds a bill to the shop
      * Only one customer can add a bill at a given time
      * and locks this method from other customers
-     * Only on bill is added, and after the operation the bill is part of the list of bills and the money is increased
-     * by the amount that is on the bill
+     * Only one bill is added, and after the operation the bill is part of the list of bills and the money is increased
+     * by the amount that is on the bill and the recorded amount for each amount is decreased
+     *
      * @param billToAdd the bill to add
      */
-    public synchronized void addBill(Bill billToAdd) {
-        shopLock.readLock().lock();
+    public void addBill(Bill billToAdd) {
+        billLock.lock();
         productsBought.add(billToAdd);
         totalIncome += billToAdd.getTotalAmount();
-        shopLock.readLock().unlock();
+        for (Map.Entry<Product, Integer> productIntegerEntry : billToAdd.getProductList().entrySet()) {
+            prodcutsRecorded.replace(
+                    productIntegerEntry.getKey(),
+                    prodcutsRecorded.get(productIntegerEntry.getKey()) - productIntegerEntry.getValue()
+            );
+        }
+        billLock.unlock();
     }
 
     /**
      * Lock the shop in exclusive mode to verify it
      */
-    public void lockShop() {
-        shopLock.writeLock().lock();
-    }
 
     /**
      * Unlock the shop in exclusive mode to verify it
      */
-    public void unlockShop() {
-        shopLock.writeLock().unlock();
-    }
 
     public HashMap<Product, Integer> getProducts() {
-        return products;
+        return prodcutsRecorded;
     }
 
     public List<Product> getProductNames() {
@@ -98,12 +98,18 @@ public class Shop {
             throw new RuntimeException("Invalid, can't have negative amount");
         if (this.products.containsKey(product)) {
             this.products.put(product, this.products.get(product) + amount);
+            this.prodcutsRecorded.put(product, this.products.get(product) + amount);
             this.initialProductList.put(product, this.products.get(product) + amount);
         } else {
             this.products.put(product, amount);
+            this.prodcutsRecorded.put(product, amount);
             this.initialProductList.put(product, amount);
             this.locksForProducts.put(product, new ReentrantLock());
         }
+    }
+
+    public HashMap<Product, ReentrantLock> getLocksForProducts() {
+        return locksForProducts;
     }
 
     /**
@@ -120,15 +126,8 @@ public class Shop {
         if (!this.products.containsKey(product))
             throw new RuntimeException("No item of that name!");
 
-        /** The customer requests access to the shop, if it is not under verification stage by the verifier
-         * The invariant is that the other items are on modified by this thread and the shop readlock (shared mode) is released,
-         * and the item lock is released. In case the customer obtains the item the quantity of th eproduct is decreased
-         *  I use the readlock (shared mode) in order to make the acces for the shoppers and deny the storage verification to verify the sotrage
-         *  while someone is shopping
-         * */
-        shopLock.readLock().lock();
-        /**
-         * The specific product lock
+        /*
+         * The customer has to lock only the product it wants to obtain
          */
         ReentrantLock mutexForItem = locksForProducts.get(product);
 
@@ -141,7 +140,6 @@ public class Shop {
             }
         } finally {
             mutexForItem.unlock();
-            shopLock.readLock().unlock();
         }
 
     }

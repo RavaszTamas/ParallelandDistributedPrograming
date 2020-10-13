@@ -37,9 +37,9 @@ public class Customer implements Runnable {
                 System.out.println(name + " has not found product \"" + entryInList.getKey().getNameOfPProduct() + "\" with amount " + entryInList.getValue());
             }
         }
-        System.out.println(name + " pays the bill");
         /** The customer pays the bill*/
         shop.addBill(billOfCustomer);
+        System.out.println(name + " pays the bill");
 
     }
 }

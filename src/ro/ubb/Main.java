@@ -3,13 +3,10 @@ package ro.ubb;
 import ro.ubb.models.*;
 
 import java.io.*;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Random;
+import java.util.*;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * Each lab needs to have documentation:
  * What needs to be in the documentation: Text file in which FUll NAME, GROUP, SEMIGROUP, NUMBER OF LAB, IMPLEMENTATION DETAILS
  * HOW DID YOU DO IT, TEST CASES, HARDWARE SPECIFICATIONS, ANY OTHER ANSWERS TO THE REQUIREMENTS GIVEN BY THE PROFESSOR
  * <p>
@@ -54,26 +51,59 @@ class Verifier extends Thread {
     }
 
     static void performCheck(Shop shop, double threshold) {
-        shop.lockShop();
+
+
+        List<Product> products = shop.getProductNames();
+        Map<Product, ReentrantLock> productReentrantLockMap = shop.getLocksForProducts();
+        ReentrantLock billLock = shop.getBillLock();
+
+        for (Product product : products) {
+            productReentrantLockMap.get(product).lock();
+        }
+        billLock.lock();
         List<Bill> productsBought = shop.getProductsBought();
+
+        HashMap<Product, Integer> currentStorage = shop.getProducts();
+
+        HashMap<Product, Integer> initialProductList = shop.getInitialProductList();
 
         double totalIncomeFromBills = productsBought.stream().mapToDouble(Bill::getTotalAmount).sum();
 
         double totalIncomeRecordedByShop = shop.getTotalIncome();
 
 
-        String stringToOutput = "\nRecorded in store: " + totalIncomeRecordedByShop + "\n";
+        String stringToOutput = "\n\n\n\n\nRecorded in store: " + totalIncomeRecordedByShop + "\n";
         stringToOutput += "Recorded in bills: " + totalIncomeFromBills + "\n";
 
 
+        for (Map.Entry<Product, Integer> entry : initialProductList.entrySet()) {
+
+
+            Integer amountOfSpecificProductSold = productsBought
+                    .stream()
+                    .mapToInt(e -> {
+                        Integer value = e.getProductList().get(entry.getKey());
+                        return Objects.requireNonNullElse(value, 0);
+                    }).sum();
+
+            Integer amountInStorage = currentStorage.get(entry.getKey());
+            if (entry.getValue() != amountInStorage + amountOfSpecificProductSold) {
+                stringToOutput += "Inconsistency found with product: " + entry.getKey().getNameOfPProduct() + " initial: " + entry.getValue() + ", actual: " + (amountInStorage + amountOfSpecificProductSold) + "\n";
+            }
+        }
 
         if (Math.abs(totalIncomeFromBills - totalIncomeRecordedByShop) > threshold) {
             stringToOutput += "Verification failed, some money went missing or maybe floating point error..., please verify it manually\n";
         } else {
-            stringToOutput += "Successful verification\n";
+            stringToOutput += "Successful verification of costs\n\n\n\n";
         }
         System.out.println(stringToOutput);
-        shop.unlockShop();
+
+        billLock.unlock();
+        for (Product product : products) {
+            productReentrantLockMap.get(product).unlock();
+        }
+
     }
 
     @Override
@@ -81,7 +111,7 @@ class Verifier extends Thread {
         while (!exit) {
             verifyTheTransactions(this.shop);
             try {
-                sleep(1);
+                sleep(10);
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
@@ -121,7 +151,7 @@ public class Main {
 
     public static Random randomGenerator = new Random(System.currentTimeMillis());
 
-    public static void simulateShop(TestSample inputParameters,int testNumber) {
+    public static void simulateShop(TestSample inputParameters, int testNumber) {
         writeInFile(inputParameters);
 
         Shop shop = new Shop();
@@ -172,8 +202,8 @@ public class Main {
         long endTime = System.currentTimeMillis();
         long totalTime = endTime - startTime;
 
-        if(testNumber > 0)
-        writeResultToFile(totalTime, inputParameters,testNumber);
+        if (testNumber > 0)
+            writeResultToFile(totalTime, inputParameters, testNumber);
 
         System.out.println("=========================================================================================");
 
@@ -209,7 +239,7 @@ public class Main {
             simulateShop(testSamples.get(i),i+1);
         }
         */
-        simulateShop(new TestSample(8,100),-1);
+        simulateShop(new TestSample(100, 1000), -1);
 
 
     }
